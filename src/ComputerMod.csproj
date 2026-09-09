@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>ApproximatelyUp.ComputerMod</AssemblyName>
+    <RootNamespace>ApproximatelyUp.ComputerMod</RootNamespace>
+    <GamePath Condition="'$(GamePath)' == ''">$(APPROXIMATELY_UP_GAME_PATH)</GamePath>
+    <GamePath Condition="'$(GamePath)' == ''">G:\SteamLibrary\steamapps\common\Approximately Up</GamePath>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MoonSharp" Version="2.0.0" />
+    <Reference Include="$(GamePath)\BepInEx\core\BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(GamePath)\BepInEx\core\BepInEx.Unity.Common.dll" Private="false" />
+    <Reference Include="$(GamePath)\BepInEx\core\BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(GamePath)\BepInEx\core\0Harmony.dll" Private="false" />
+    <Reference Include="$(GamePath)\BepInEx\core\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(GamePath)\BepInEx\core\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(GamePath)\BepInEx\interop\*.dll" Private="false" />
+  </ItemGroup>
+  <Target Name="CheckGameReferences" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(GamePath)/BepInEx/core/BepInEx.Core.dll')"
+           Text="BepInEx references not found. Set -p:GamePath=&quot;path/to/Approximately Up&quot; or APPROXIMATELY_UP_GAME_PATH to an installation with BepInEx 6 IL2CPP." />
+    <Error Condition="!Exists('$(GamePath)/BepInEx/interop/Assembly-CSharp.dll')"
+           Text="Game interop references not found. Launch the supported game once with BepInEx and Interop Patcher 2.x to generate them. Do not commit those assemblies." />
+  </Target>
+</Project>

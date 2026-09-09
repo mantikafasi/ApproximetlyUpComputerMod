@@ -1,0 +1,26 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  managed-checks:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            6.0.x
+      # These projects do not require proprietary game/interop assemblies.
+      - name: Lua, authority, and storage checks
+        run: dotnet run --project tests/LuaChecks.csproj --configuration Release
+      - name: Lua editing checks
+        run: dotnet run --project tests/LuaEditingChecks.csproj --configuration Release

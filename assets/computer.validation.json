@@ -1,0 +1,110 @@
+{
+  "model": "AU-08",
+  "blender_bounds": [
+    1.0,
+    1.0,
+    0.25
+  ],
+  "unity_bounds": [
+    1.0,
+    0.25,
+    1.0
+  ],
+  "unity_min": [
+    -0.5,
+    -0.125,
+    -0.5
+  ],
+  "unity_max": [
+    0.5,
+    0.125,
+    0.5
+  ],
+  "triangles": 4555,
+  "export_vertices": 8470,
+  "parts": 10,
+  "input_sockets": 8,
+  "output_sockets": 8,
+  "min_winding_normal_alignment": 0.9999998509883881,
+  "finite_values": true,
+  "unit_normals": true,
+  "indices_in_bounds": true,
+  "user_scene_unchanged": true,
+  "external_textures": false,
+  "axis_conversion": "[blender.x, blender.z, -blender.y]",
+  "part_triangle_counts": {
+    "Legend": 295,
+    "Recess": 2200,
+    "Charcoal": 428,
+    "DisplayMuted": 192,
+    "DisplayCyan": 272,
+    "InputAmber": 246,
+    "Titanium": 44,
+    "OutputBlue": 274,
+    "ScreenTeal": 44,
+    "Hardware": 560
+  },
+  "independent_file_validation": "PASS",
+  "isolated_library": true,
+  "native_socket_contract": {
+    "bounds": [
+      1,
+      0.25,
+      1
+    ],
+    "pitch": 0.125,
+    "anchor_to_mouth": 0.0625,
+    "mouth_outer_radius": 0.03501129523,
+    "mouth_inner_radius": 0.022,
+    "data_cable_radius": 0.02,
+    "all_16_mesh_ring_centers_match_markers": true
+  },
+  "saved_evaluated_mesh_matches_json": true,
+  "verified_images": {
+    "computer-icon.png": {
+      "size": [
+        512,
+        512
+      ],
+      "channels": 4,
+      "transparent": true,
+      "unclipped": true,
+      "visible_pixels": 70419,
+      "pixel_bounds": [
+        60,
+        93,
+        451,
+        408
+      ]
+    },
+    "computer-preview.png": {
+      "size": [
+        1200,
+        1000
+      ],
+      "channels": 4
+    },
+    "computer-icon.rgba": {
+      "size": [
+        512,
+        512
+      ],
+      "file_bytes": 1048584,
+      "header_bytes": 8,
+      "payload_bytes": 1048576,
+      "format": "RGBA8",
+      "alpha": "straight",
+      "row_order": "bottom-to-top",
+      "column_order": "left-to-right",
+      "exact_png_samples": true,
+      "independent_blender_decode_matches": true
+    }
+  },
+  "sha256": {
+    "computer.blend": "76d911d75911fd06399fc61c70ab1ff2b5478f03f87a4bd23a086469b5b9189a",
+    "computer.mesh.json": "46a2d34e6d21d0feb107d22847e09988d131cea306b27616c5a84b5e71014535",
+    "computer-icon.png": "b468936cdd9e1a590d8ffe4a42e84697ec66dba7fb4cfb63cab99012b60e0b10",
+    "computer-preview.png": "b7fa3f287a5070c1d811b4ede1f7a28186f27605ecb08d179fb945e232170376",
+    "computer-icon.rgba": "94b608177c7400a76b1b100b4183ec728b1bfd66dd5812479a1f1983d30be6c3"
+  }
+}
