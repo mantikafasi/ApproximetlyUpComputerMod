@@ -224,6 +224,7 @@ performance and actual two-player delivery still need further validation.
 - `assets/`: authored AU-08 Blender library, exporter/verifier, runtime mesh and icons.
 - `computer.lua`: initial example, copied only when an installed template does not exist.
 - `Deploy.ps1`: build and install helper.
+- `HOW-IT-WORKS.md`: internal architecture notes for mod developers (native item clone, ECS access, Lua runtime, networking).
 
 Research dumps, game/loader files, generated interop, player scripts/saves, local agent
 notes, personal root-level Blender files, backups, build outputs and credentials are
