@@ -322,7 +322,8 @@ internal static unsafe class ComputerInteraction
             if (!manager.HasComponent(target, ComponentType.ReadOnly<BelongingSC>())) return Finish("native-ray-not-sc-child");
             var owner = manager.GetComponentData<BelongingSC>(target);
             computer = owner._sc;
-            if (!ComputerItem.IsComputer(manager, computer)) return Finish("native-ray-not-au08");
+            bool graph = GraphScreen.IsScreen(manager, computer);
+            if (!graph && !ComputerItem.IsComputer(manager, computer)) return Finish("native-ray-not-au08");
 
             // Reserve only a matching computer's action, BEFORE validation/callback can fail.
             // A refused AU-08 open must never fall through into native program-ID label typing.
@@ -384,11 +385,11 @@ internal static unsafe class ComputerInteraction
 
             // Only this live manager and the exact versioned/GUID-validated native target's root
             // reach main. Opening is not execution authorization; Save/Run own their role checks.
-            prompt = controls._keyAction + " Edit AU-08";
+            prompt = controls._keyAction + (graph ? " View Graph Screen" : " Edit AU-08");
             promptUntil = Environment.TickCount64 + 250;
             if (!consumed) return false;
             prompt = "";
-            bool opened = current.OpenComputerEditor(manager, computer);
+            bool opened = graph ? current.OpenGraphScreen(manager, computer) : current.OpenComputerEditor(manager, computer);
             return Finish(opened ? "opened" : "editor-callback-refused", opened);
         }
         catch (Exception ex)

@@ -13,12 +13,13 @@ internal static class LuaEditing
     internal const int MaxLength = 16384;
     internal const int MaxSuggestions = 8;
     private static readonly string[] Globals =
-        "input input_bool input_vec3 output output_vec3 state dt tick_id tick math assert error type".Split(' ');
+        "input input_bool input_vec3 output output_vec3 state dt tick_id tick math graph assert error type".Split(' ');
     private static readonly string[] Keywords =
         "and break do else elseif end false for function goto if in local nil not or repeat return then true until while".Split(' ');
     // Keep this aligned with the allowlist in LuaComputer, not the stock Lua math library.
     private static readonly string[] MathNames =
-        "abs acos asin atan atan2 ceil cos deg exp floor fmod log max min pi pow rad sin sqrt tan".Split(' ');
+        "abs acos asin atan atan2 ceil cos deg exp floor fmod log max min pi pow rad random randomseed sin sqrt tan".Split(' ');
+    private static readonly string[] GraphNames = "axes clear marker series".Split(' ');
 
     internal static bool Valid(LuaEdit edit) => edit.Text.Length <= MaxLength &&
         Boundary(edit.Text, edit.Cursor) && Boundary(edit.Text, edit.Anchor);
@@ -112,28 +113,29 @@ internal static class LuaEditing
         if (prefix.Length > 64 || prefix.Length > 0 && !IdentifierStart(prefix[0])) return Array.Empty<string>();
         int previous = start - 1;
         while (previous >= 0 && char.IsWhiteSpace(code[previous])) previous--;
-        bool math = previous >= 0 && code[previous] == '.';
-        if (math)
+        string members = "";
+        if (previous >= 0 && code[previous] == '.')
         {
             int qualifierEnd = previous;
             while (qualifierEnd > 0 && char.IsWhiteSpace(code[qualifierEnd - 1])) qualifierEnd--;
             int qualifier = qualifierEnd;
             while (qualifier > 0 && IdentifierPart(code[qualifier - 1])) qualifier--;
-            if (code.Substring(qualifier, qualifierEnd - qualifier) != "math") return Array.Empty<string>();
+            members = code.Substring(qualifier, qualifierEnd - qualifier);
+            if (members is not ("math" or "graph")) return Array.Empty<string>();
             int before = qualifier - 1;
             while (before >= 0 && char.IsWhiteSpace(code[before])) before--;
             if (before >= 0 && code[before] is '.' or ':') return Array.Empty<string>();
         }
         else if (previous >= 0 && code[previous] == ':') return Array.Empty<string>();
-        if (prefix.Length == 0 && !explicitRequest && !math) return Array.Empty<string>();
+        if (prefix.Length == 0 && !explicitRequest && members.Length == 0) return Array.Empty<string>();
         var found = new List<string>(MaxSuggestions);
         void Offer(string name)
         {
             if (found.Count < MaxSuggestions && name.StartsWith(prefix, StringComparison.Ordinal) &&
                 (explicitRequest || name != prefix) && !found.Contains(name)) found.Add(name);
         }
-        foreach (string name in math ? MathNames : Globals) Offer(name);
-        if (!math)
+        foreach (string name in members == "math" ? MathNames : members == "graph" ? GraphNames : Globals) Offer(name);
+        if (members.Length == 0)
         {
             foreach (string name in Keywords) Offer(name);
             // Lexical names, including locals/parameters, not scope or type inference. Bound both scan and name count.

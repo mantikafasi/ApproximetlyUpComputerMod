@@ -43,6 +43,13 @@ internal sealed class ComputerEditor
 
     internal ComputerEditor(Plugin plugin) => this.plugin = plugin;
     internal bool IsOpen { get; private set; }
+    private Action<float, float>? panel;
+    internal void OpenPanel(Action<float, float> draw)
+    {
+        if (IsOpen || CapturesInput) return;
+        panel = draw;
+        Toggle();
+    }
     // Main must gate gameplay controls with this, including the key-release quarantine after closing.
     internal static bool CapturesInput => capturing is not null;
 
@@ -198,8 +205,8 @@ internal sealed class ComputerEditor
                 BeforeEventSystem(events);
                 if (!IsOpen) return;
             }
-            ObserveSelection();
-            if (buffer.Dirty && buffer.Key != SelectionKey())
+            if (panel is null) ObserveSelection();
+            if (panel is null && buffer.Dirty && buffer.Key != SelectionKey())
                 Confirm("The retained-draft limit is reached. Discard this draft to open the targeted computer? Other drafts will be kept.", () =>
                 { buffer.Discard(); ObserveSelection(); });
             EnforceCursor();
@@ -210,7 +217,7 @@ internal sealed class ComputerEditor
     internal void Close()
     {
         if (!IsOpen) return;
-        if (!buffer.Dirty) { HidePreservingDraft(); return; }
+        if (panel is not null || !buffer.Dirty) { HidePreservingDraft(); return; }
         Confirm("Unsaved Lua draft. Nothing is saved automatically on close.", () =>
         {
             buffer.Discard();
@@ -223,6 +230,7 @@ internal sealed class ComputerEditor
     {
         if (!IsOpen) return;
         IsOpen = false;
+        panel = null;
         sourceFocused = completionVisible = false;
         sourceControl = 0;
         sourceEditor = null;
@@ -269,7 +277,7 @@ internal sealed class ComputerEditor
             }
         }
         if (!IsOpen) return;
-        ObserveSelection();
+        if (panel is null) ObserveSelection();
         EnforceCursor();
         if (Application.isFocused && Keyboard.current?.escapeKey.wasPressedThisFrame == true && escapeFrame != Time.frameCount)
         {
@@ -390,7 +398,7 @@ internal sealed class ComputerEditor
             }
             catch (Exception ex) { notice = "Reload failed; draft retained: " + ex.Message; return; }
             buffer.Discard();
-            ObserveSelection();
+            if (panel is null) ObserveSelection();
             notice = plugin.SelectedTarget is null ? "Scratch draft discarded." : "Source reload requested; see status below.";
         }
         if (buffer.Dirty) Confirm("Discard the retained draft and reload this computer's source?", Request);
@@ -423,7 +431,7 @@ internal sealed class ComputerEditor
             var panel = new Rect((width - panelWidth) / 2, 12, panelWidth, Math.Max(80, height - 24));
             float contentHeight = Math.Max(520, panel.height - 18);
             panelScroll = GUI.BeginScrollView(panel, panelScroll, new Rect(0, 0, panelWidth - 20, contentHeight));
-            try { DrawPanel(panelWidth - 20, contentHeight); }
+            try { if (this.panel is { } draw) draw(panelWidth - 20, contentHeight); else DrawPanel(panelWidth - 20, contentHeight); }
             finally { GUI.EndScrollView(); }
             // Unhandled Tab belongs to IMGUI focus traversal, not the source editor.
             if ((Event.current.type is EventType.KeyDown or EventType.KeyUp or EventType.MouseDown or

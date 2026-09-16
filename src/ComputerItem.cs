@@ -68,6 +68,7 @@ internal static class ComputerItem
 
     private static bool GetName(EPC_SpaceshipComponent __instance, ref string __result)
     {
+        if (GraphScreen.IsAuthoring(__instance)) { __result = GraphScreen.Name; return false; }
         if (_clone == null || __instance.Pointer != _clone.Pointer) return true;
         __result = "AU-08 Lua Computer";
         return false;
@@ -75,6 +76,7 @@ internal static class ComputerItem
 
     private static bool GetDescription(EPC_SpaceshipComponent __instance, ref string __result)
     {
+        if (GraphScreen.IsAuthoring(__instance)) { __result = "Four-channel signal history or Lua-programmed plots. Press E for graph view and settings."; return false; }
         if (_clone == null || __instance.Pointer != _clone.Pointer) return true;
         __result = "Programmable computer with 8 numeric inputs and 8 outputs. Press E to edit. Programs run on the host in game mode and stop on exit.";
         return false;
@@ -98,6 +100,7 @@ internal static class ComputerItem
                     {
                         _clone.gameObject.SetActive(true);
                         _holder!.SetActive(true);
+                        GraphScreen.Prepare(__instance, _clone, _assetDirectory, _log!);
                         return;
                     }
                 throw new InvalidOperationException("Computer authoring array changed; refusing late re-registration.");
@@ -348,9 +351,11 @@ internal static class ComputerItem
             _holder.SetActive(true);
             if (root.GetComponentsInChildren(Il2CppType.Of<SpaceshipComponentAreaPoly>(), false).Length != areaCount)
                 throw new InvalidOperationException("Native joint conversion cannot see every retained chassis support polygon.");
-            var appended = new Il2CppReferenceArray<EPC_SpaceshipComponent>(originals.Length + 1);
+            var graphScreen = GraphScreen.Prepare(__instance, _clone, _assetDirectory, _log!);
+            var appended = new Il2CppReferenceArray<EPC_SpaceshipComponent>(originals.Length + 2);
             for (int i = 0; i < originals.Length; i++) appended[i] = originals[i];
             appended[originals.Length] = _clone;
+            appended[originals.Length + 1] = graphScreen;
             PrefabId = id;
             _log!.LogInfo($"Computer authoring prepared: chassis={chassis.name}, storage={labelTemplate.name}, bounds=({DeviceBounds.x},{DeviceBounds.y},{DeviceBounds.z}), modelScale=1, contact=(0,-0.125,0), colliderSize=({box._scale.x},{box._scale.y},{box._scale.z}), activeJointPolygons={areaCount}, pitch={PortPitch}, anchorToMouth={PortFaceOffset}, ports=8/8, parts={model.Parts.Count}, prefab={id:X16}, class=35, available={_clone._availableAmount}.");
             // This is the only registration write. Native Core.Initialize builds conversion/maps/availability/headers.
@@ -607,6 +612,7 @@ internal static class ComputerItem
                 throw new InvalidOperationException("Converted model no longer fills the physical device bounds.");
             _registered = true;
             _prefabEntity = entity;
+            GraphScreen.AfterInitialize();
             _log!.LogInfo($"Computer item registered: AU-08, prefab={PrefabId:X16}, native class=35, ports=8/8, CRP parts={Renderers.Count}. GEOMETRY PASS: 16 native mouth centers match actual mesh rings, glyph/ring radius matched, CRP transforms identity, bounds={V(renderedBounds.size)}. Programs remain disarmed.");
         }
         catch (Exception ex)
@@ -947,7 +953,7 @@ internal static class ComputerItem
         return ParseId(value, allowInvalid);
     }
 
-    private static string? ParseId(ActionableLabelString value, bool allowInvalid)
+    internal static string? ParseId(ActionableLabelString value, bool allowInvalid)
     {
         Span<char> id = stackalloc char[12];
         bool empty = true, terminated = true;
@@ -983,7 +989,7 @@ internal static class ComputerItem
         return true;
     }
 
-    private static Entity ValidateLabel(EntityManager manager, Entity component, bool prefab)
+    internal static Entity ValidateLabel(EntityManager manager, Entity component, bool prefab)
     {
         var label = manager.GetComponentData<SCTypeLabel>(component)._actionableLabelEntity;
         if (label == component || !manager.Exists(label) ||

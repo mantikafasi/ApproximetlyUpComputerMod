@@ -88,6 +88,8 @@ Check(Eval("output(1, input(1)); output(2, input(2))", new[] { -(double)1e20f, (
 Check(Eval("assert(type(state) == 'table'); assert(type(input) == 'function'); output(1, math.max(math.abs(-2), math.sqrt(9)))")[0] == 3,
     "math/type/assert");
 Check(Eval("output(1, math.floor(math.pi)); output(2, math.fmod(7, 4))", outputs: 2).SequenceEqual(new[] { 3.0, 3.0 }), "math constants/binary");
+Check(Eval("math.randomseed(1); local a=math.random(); math.randomseed(1); output(1, a==math.random() and 1 or 0)")[0] == 1, "seeded random");
+Check(Eval("math.randomseed(3); output(1, math.random(1,1))")[0] == 1, "random integer bounds");
 Check(Eval("local sum=0; for i=1,100 do sum=sum+i end; output(1,sum)")[0] == 5050, "finite loop completes across VM slices");
 Check(Eval("return {anything = function() end}")[0] == 0, "Lua return values never escape to host");
 
@@ -104,7 +106,7 @@ Check(defaults.Tick(Array.Empty<double>(), 0, 0)[0] == 42 && defaults.Tick(Array
 
 foreach (string global in new[] { "io", "os", "file", "package", "require", "load", "loadfile", "dofile", "loadsafe", "loadfilesafe",
     "debug", "coroutine", "dynamic", "json", "clr", "luanet", "CS", "import", "_MOONSHARP", "print", "collectgarbage", "pcall", "xpcall",
-    "string", "table", "setmetatable", "getmetatable", "tonumber", "tostring", "math.random", "math.randomseed" })
+    "string", "table", "setmetatable", "getmetatable", "tonumber", "tostring" })
     Check(Eval("output(1, " + global + " == nil)")[0] == 1, "forbidden " + global);
 Reject(() => Eval("output(1, ('x'):rep(1000000))"), "no string metatable operations");
 foreach (string index in new[] { "0", "-1", "2", "1.5", "0/0", "1/0", "-1/0", "'1'", "true", "{}", "nil", "1e100" })

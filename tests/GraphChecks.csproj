@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj/graphs/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);GRAPH_CHECKS</DefineConstants>
+    <OutputPath>bin/graphs/</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MoonSharp" Version="[2.0.0]" />
+    <Compile Include="../src/GraphData.cs" />
+    <Compile Include="../src/GraphDrawing.cs" />
+    <Compile Include="../src/Scripting/LuaGraph.cs" />
+    <Compile Include="../src/Scripting/LuaComputer.cs" />
+    <Compile Include="../src/ComputerMessage.cs" />
+    <Compile Include="graphs/GraphChecks.cs" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

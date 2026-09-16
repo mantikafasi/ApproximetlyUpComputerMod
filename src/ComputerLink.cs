@@ -30,6 +30,7 @@ internal sealed class ComputerLink
         internal readonly ComputerLinkPeer State;
         internal int Received, Sent;
         internal bool Opened;
+        internal double GraphBytes = 262144, GraphRefilled;
         internal Peer(uint handle, Entity admission, long timeToken, bool client, string epoch, double now)
         { Handle = handle; Admission = admission; TimeToken = timeToken; State = new(client, epoch, now); }
     }
@@ -162,6 +163,15 @@ internal sealed class ComputerLink
     {
         if (disabled || stopped || peer.Sent >= 4) { Status = "Computer channel send budget reached; message was not sent."; return false; }
         byte[] bytes = ComputerPacket.Encode(packet, !IsClient); // Local schema errors remain actionable to the caller.
+        if (packet.Message?.Kind is "graph-state" or "graph-get")
+        {
+            double now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+            peer.GraphBytes = Math.Min(262144, peer.GraphBytes + Math.Max(0, now - peer.GraphRefilled) * 262144);
+            peer.GraphRefilled = now;
+            // Leave a send slot for editor commands/acknowledgements; snapshots have a byte budget too.
+            if (peer.Sent >= 3 || peer.GraphBytes < bytes.Length) return false;
+            peer.GraphBytes -= bytes.Length;
+        }
         try
         {
             if (!Live(id, peer)) { peer.State.Invalidate(); Status = "Computer peer disconnected; message was not sent."; return false; }

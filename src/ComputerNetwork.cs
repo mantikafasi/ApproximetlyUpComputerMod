@@ -20,7 +20,7 @@ internal static class ComputerNetwork
     private static bool layoutsChecked;
     private static IntPtr createLabelMethod, decodeLabelMethod;
 
-    // .NET 6 gives the generated label wrapper only 42 bytes. Native memcpy requires 44.
+    // 1.0.204 adds a rotation byte: generated size 43, native size still 44.
     [StructLayout(LayoutKind.Explicit, Size = 44)]
     private struct LabelBuffer
     {
@@ -122,7 +122,7 @@ internal static class ComputerNetwork
     {
         var (singleton, net, identity) = PrepareTarget(manager, target);
         // GetProgramId also validates the placed label, text-renderer ownership, bounds and 12-hex/NUL encoding.
-        string id = ComputerItem.GetProgramId(manager, target.Component)
+        string id = (GraphScreen.IsScreen(manager, target.Component) ? GraphScreen.ReadId(manager, target.Component) : ComputerItem.GetProgramId(manager, target.Component))
             ?? throw new InvalidOperationException("The computer has no valid committed program ID.");
         if (!ComputerItem.ValidId(id.AsSpan()))
             throw new InvalidOperationException("Program ID must be exactly 12 uppercase hexadecimal characters.");
@@ -142,7 +142,8 @@ internal static class ComputerNetwork
         var packet = new NetcoreEvent_SetActionableLabel {
             _label = text, _netcoreEntity = identity, _linkedEntityGroupIndex = checked((ushort)index),
             // Native +infinity sentinel skips ActionableLabelAsFloat writes. Zero is NOT equivalent.
-            _asFloatValue = ActionableLabelAsFloat.NONE
+            _asFloatValue = ActionableLabelAsFloat.NONE,
+            _rotated = manager.GetComponentData<ActionableLabel>(label)._rotated
         };
         var queue = manager.GetBuffer<NetcoreNewEvent>(singleton, false);
         if (queue.Length is < 0 or >= 8192)
@@ -220,8 +221,14 @@ internal static class ComputerNetwork
             throw new InvalidOperationException("Cannot publish from a stale or foreign world.");
 
         manager.CompleteAllTrackedJobs();
-        Ports.ValidateTarget(manager, target);
-        if (!ComputerItem.IsComputer(manager, target.Component) ||
+        bool screen = GraphScreen.IsScreen(manager, target.Component);
+        if (screen)
+        {
+            var live = GraphScreen.Target(manager, target.Component);
+            if (live.Guid != target.Guid || !live.Inputs.AsSpan().SequenceEqual(target.Inputs)) throw new InvalidOperationException("Graph target changed before publication.");
+        }
+        else Ports.ValidateTarget(manager, target);
+        if ((!screen && !ComputerItem.IsComputer(manager, target.Component)) ||
             !manager.HasComponent(target.Component, ComponentType.ReadOnly<SCBlueprintClass>()) ||
             manager.GetComponentData<SCBlueprintClass>(target.Component)._class != 35 ||
             !manager.HasComponent(target.Component, ComponentType.ReadOnly<NetcoreEntity>()) ||
@@ -270,8 +277,8 @@ internal static class ComputerNetwork
         bool valid = CheckLayout<NetcoreEntity>(4, 4, details, ("_id", 0));
         valid &= CheckLayout<NetcoreEvent_SyncPortValue>(12, 12, details,
             ("_netcoreEntity", 0), ("_portValue", 4), ("_linkedEntityGroupIndex", 8));
-        valid &= CheckLayout<NetcoreEvent_SetActionableLabel>(44, 42, details,
-            ("_label", 0), ("_netcoreEntity", 32), ("_asFloatValue", 36), ("_linkedEntityGroupIndex", 40));
+        valid &= CheckLayout<NetcoreEvent_SetActionableLabel>(44, 43, details,
+            ("_label", 0), ("_netcoreEntity", 32), ("_asFloatValue", 36), ("_linkedEntityGroupIndex", 40), ("_rotated", 42));
         valid &= CheckLayout<ActionableLabelString>(32, 32, details, ("_data0", 0), ("_data15", 30));
         valid &= CheckLayout<NetcoreEvent>(16, 16, details, ("_dataPtr", 0), ("_flags", 8));
         valid &= CheckLayout<NetcoreNewEvent>(24, 24, details, ("_event", 0), ("_sortValue", 16));

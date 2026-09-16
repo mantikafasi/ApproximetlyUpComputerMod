@@ -14,7 +14,7 @@ $files = [ordered]@{
     'LICENSE' = Join-Path $PSScriptRoot 'LICENSE'
     'THIRD_PARTY_NOTICES.md' = Join-Path $PSScriptRoot 'THIRD_PARTY_NOTICES.md'
 }
-$assets = @('computer.mesh.json', 'computer-icon.png', 'computer-icon.rgba')
+$assets = @('computer.mesh.json', 'computer-icon.png', 'computer-icon.rgba', 'graph-screen.mesh.json')
 foreach ($name in $files.Keys) {
     if (!(Test-Path -LiteralPath $files[$name] -PathType Leaf)) { throw "Missing deployment file: $name" }
 }

@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 
 namespace ApproximatelyUp.ComputerMod;
 
-[BepInPlugin(Id, "Approximately Up Computer", "0.4.4")]
+[BepInPlugin(Id, "ApproximetlyComputers", "0.5.0")]
 public sealed class Plugin : BasePlugin
 {
     public const string Id = "local.approximatelyup.computer";
@@ -29,6 +29,8 @@ public sealed class Plugin : BasePlugin
     private ComputerEditor? editor;
     private ProgramStore store = null!;
     private ComputerLink link = null!;
+    private GraphScreens graphs = null!;
+    private readonly GraphVisualProbe? graphVisualProbe = Environment.GetEnvironmentVariable("APPROX_GRAPH_PROBE") == "1" ? new() : null;
     private string linkSession = "";
     private bool remotePeers;
     private long nextLinkPoll, nextSourcePoll, remoteDeadline, nextNetworkHeartbeat;
@@ -73,22 +75,18 @@ public sealed class Plugin : BasePlugin
     internal bool CommandPending => remoteCommand is not null || remotePending is { Kind: not "get" };
     internal string NetworkStatus => link.Status;
     internal string Status { get; private set; } = "Waiting for simulation.";
-    internal string Display => "AU-08 | E: Edit | Auto-start in game mode | F8 Run/Stop | F9 Stop all\n" + Status +
-        "\n" + (Selected is not { } c ? "Aim at a computer and press E to edit it." : $"{c.Target.Name} [{c.Target.Component.Index}:{c.Target.Component.Version}] | {c.Target.Inputs.Length} IN / {c.Target.Outputs.Length} OUT | ticks {c.Ticks}") +
-        $" | running {computers.Values.Count(c => c.Vm is not null)}/8 | tick {tickMilliseconds:F2} ms" +
-        (Selected is not { } s || s.Inputs.Length == 0 ? "" : "\nLast inputs: " + string.Join(", ", s.Inputs.Select(v => v.ToString("G5")))) +
-        (Selected is not { } o || o.Outputs.Length == 0 ? "" : "\nOutputs: " + string.Join(", ", o.Outputs.Select(v => v.ToString("G5"))));
 
     public override void Load()
     {
-        CheckHash("GameAssembly.dll", "5DE3E4D8167C9C81986D192B5B6B80BFE98BCD84BA3C9B1B765FC24E33475B26");
-        CheckHash("ApproximatelyUp_Data/il2cpp_data/Metadata/global-metadata.dat", "48AF1055564540694DD77A293B653595A7FB0FB7700598884B056BAA59E616B4");
+        CheckHash("GameAssembly.dll", ComputerPacket.GameHash);
+        CheckHash("ApproximatelyUp_Data/il2cpp_data/Metadata/global-metadata.dat", "55842F242AA732F75DFBEBB2F90E449984C033AFF748AB5DA8E8805DDE2E3370");
         LuaComputer.SelfTest();
         ComputerEditorBuffer.SelfTest();
         Log.LogInfo("Lua CLR smoke test passed: input 3 -> output 6. Editor buffer checks passed.");
         string directory = Path.Combine(Paths.PluginPath, "ApproximatelyUpComputer");
         store = new ProgramStore(directory);
         link = new ComputerLink(text => Log.LogWarning(text));
+        graphs = new GraphScreens(this, directory);
         ComputerNetwork.ResetForWorld();
         Current = this;
         try
@@ -154,6 +152,7 @@ public sealed class Plugin : BasePlugin
             link.ResetForWorld(); ComputerNetwork.ResetForWorld();
             remoteCommand = remotePending = null; linkSession = ""; nextLinkPoll = nextSourcePoll = 0;
             editor?.HidePreservingDraft();
+            graphs.Reset();
         }
         if (!startupSeen)
         {
@@ -181,20 +180,27 @@ public sealed class Plugin : BasePlugin
                 Log.LogInfo("COMPUTER NETWORK BINDINGS PASS: native port and label factories create/decode/dispose without enqueue.");
                 Log.LogInfo("COMPUTER LINK BINDINGS PASS: " + link.ProbeBindings(m));
                 ComputerItem.ProbeInstance(m, ReadSingleton<Core.Singleton>(m));
+                GraphScreen.Probe(m);
             }
         }
         long now = Environment.TickCount64;
         var manager = active.EntityManager;
         manager.CompleteAllTrackedJobs();
+        if(graphVisualProbe is not null && editor is not null)
+        {
+            try { graphVisualProbe.Tick(manager, editor); }
+            catch { graphVisualProbe.Cleanup(); throw; }
+        }
         RefreshGameMode(manager);
         if (now < nextLinkPoll && remoteCommand is null && reloadRequest is null && runRequest is null && saveRequest is null &&
             clearOutputs.Count == 0 && !computers.Values.Any(c => c.Vm is not null || c.NetworkPending || c.LabelPending) &&
-            (flight is null || exitPending || autoStartSuppressed || now < nextAutoScan)) return;
+            (flight is null || exitPending || autoStartSuppressed || now < nextAutoScan) && !graphs.Due(now)) return;
         int currentTick = ReadSingleton<UniverseCoreSingleton>(manager)._physicsTickID;
         bool forwardTick = currentTick > lastWorldTick;
         float speed = ReadSingleton<Core.Singleton>(manager)._simulationSpeed;
         bool simulationAdvancing = forwardTick && float.IsFinite(speed) && speed > 0;
-        if (currentTick < lastWorldTick)
+        bool rewinding = currentTick < lastWorldTick;
+        if (rewinding)
         {
             StopAll("Rewind detected. All VMs reset; native restored values left intact.", false);
             autoStartSuppressed = true;
@@ -210,6 +216,8 @@ public sealed class Plugin : BasePlugin
             nextLinkPoll = now + (link.IsClient || link.HasPeers ? 50 : 250);
             if (link.IsClient) PumpRemote(manager, now);
         }
+        try { graphs.Tick(manager, link, simulationAdvancing, flight is not null && !exitPending, currentTick, Core.PhysicsDeltaTime, rewinding); }
+        catch (Exception ex) { SetStatus("Graph update deferred: " + Short(ex)); }
         if (reloadRequest is { } choice)
         {
             reloadRequest = null;
@@ -412,6 +420,7 @@ public sealed class Plugin : BasePlugin
         if (!p.exitPending) p.StopAll("Native game-mode exit: computers stopped before restoration.", false);
         p.exitPending = p.autoStartSuppressed = true;
         p.remoteCommand = p.remotePending = null;
+        p.graphs.StopFlight();
         ComputerNetwork.ResetForWorld();
     }
     private void AutoStart(EntityManager manager, long now)
@@ -501,6 +510,7 @@ public sealed class Plugin : BasePlugin
     private void ReceiveRemote(EntityManager manager, ulong peer, ComputerMessage message)
     {
         ObserveLinkSession();
+        if (message.Kind.StartsWith("graph-", StringComparison.Ordinal)) { graphs.Receive(manager, link, peer, message); return; }
         if (link.IsClient)
         {
             if (remotePending is not { } pending || pending.Id != message.Id || pending.Target != message.Target) return;
@@ -596,6 +606,24 @@ public sealed class Plugin : BasePlugin
         editor.Toggle();
         Log.LogInfo($"COMPUTER INTERACT: opened targeted {target.Name} [{target.Component.Index}:{target.Component.Version}], GUID={target.Guid}; source not executed.");
         return editor.IsOpen;
+    }
+    internal bool OpenGraphScreen(EntityManager manager, Entity component) => editor is not null && !failed && graphs.Open(manager, component, editor);
+    internal void CloseGraphView() => editor?.Close();
+    internal bool CanGraphWrite(EntityManager manager) => CheckSession(manager, out _);
+    internal GraphFrame? GraphAt(EntityManager manager, Entity output)
+    {
+        if (!manager.Exists(output) || !manager.HasComponent<BelongingSC>(output)) return null;
+        var owner = manager.GetComponentData<BelongingSC>(output)._sc;
+        if (!computers.TryGetValue((owner.Index, owner.Version), out var c) || c.Vm is null ||
+            flight is null || exitPending || !Ports.IsFlightMember(manager, c.Target) || !Ports.IsActive(manager, c.Target)) return null;
+        Ports.ValidateTarget(manager, c.Target);
+        if (ProgramId(manager, c.Target) != c.ProgramId) return null;
+        int index = Array.IndexOf(c.Target.Outputs, output);
+        if (index < 0) return null;
+        if (c.Vm.Graphs.TryGetValue(index + 1, out var frame)) return frame;
+        if (c.Vm.Graphs.TryGetValue(1, out frame)) return frame;
+        foreach (var extra in c.Vm.Graphs.Values) return extra;
+        return null;
     }
     internal void RequestRun()
     {
@@ -701,13 +729,28 @@ public sealed class Plugin : BasePlugin
         }
         catch (Exception ex) { p.StopAll("Controls: " + Short(ex), true); }
     }
+    private GUIStyle? promptLabel;
+    private float hudScale;
+    private static float UiScale()
+    {
+        var canvas = UIManager._singleton?._canvas;
+        if (canvas != null && canvas.scaleFactor is > 0.25f and < 8f) return canvas.scaleFactor;
+        return Math.Max(1f, Screen.height / 1080f);
+    }
     internal void Draw()
     {
         if (editor?.IsOpen == true) { editor.Draw(); return; }
-        GUI.Box(new Rect(10, 10, Math.Min(780, Screen.width - 20), 110), "");
-        GUI.Label(new Rect(20, 17, Math.Min(760, Screen.width - 40), 100), Display);
-        if (ComputerInteraction.Prompt.Length != 0)
-            GUI.Label(new Rect(Screen.width / 2f - 100, Screen.height / 2f + 36, 240, 24), ComputerInteraction.Prompt);
+        if (ComputerInteraction.Prompt.Length == 0) return;
+        float s = UiScale();
+        if (promptLabel is null || Math.Abs(hudScale - s) > 0.01f)
+        {
+            hudScale = s;
+            promptLabel = new GUIStyle { font = GUI.skin.font, fontSize = Math.Max(18, (int)Math.Round(22 * s)),
+                alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            promptLabel.normal.textColor = Color.white;
+        }
+        float w = 520 * s, h = 40 * s;
+        GUI.Label(new Rect((Screen.width - w) / 2f, Screen.height / 2f + 40 * s, w, h), ComputerInteraction.Prompt, promptLabel);
     }
     internal void SetStatus(string message) { Status = message; Log.LogInfo(message); }
     private static string Short(Exception ex) => ex.Message.Length <= 256 ? ex.Message : ex.Message[..256];
@@ -715,6 +758,8 @@ public sealed class Plugin : BasePlugin
     {
         StopAll("Plugin unloaded.", false);
         link.Shutdown(); ComputerNetwork.ResetForWorld();
+        graphs.Reset();
+        graphVisualProbe?.Cleanup();
         editor?.Shutdown(); harmony.UnpatchSelf(); Current = null;
         if (hud is not null) UnityEngine.Object.Destroy(hud);
         return true;

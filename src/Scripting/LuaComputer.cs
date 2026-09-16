@@ -20,6 +20,8 @@ public sealed class LuaComputer
     private readonly int outputCount;
     private double[]? pending;
     private bool faulted;
+    private readonly LuaGraph graph;
+    public System.Collections.Generic.IReadOnlyDictionary<int, GraphFrame> Graphs => graph.Frames;
 
     public LuaComputer(string source, int inputCount, int outputCount)
     {
@@ -32,10 +34,12 @@ public sealed class LuaComputer
         inputs = new double[inputCount];
         this.outputCount = outputCount;
         script = new Script(CoreModules.None);
+        graph = new LuaGraph(script, outputCount);
         script.Globals.Set("state", DynValue.NewTable(script));
 
-        // Fixed-arity numeric callbacks avoid stock library coercions, varargs, and random state.
+        // Fixed-arity numeric callbacks avoid stock library coercions and varargs.
         var math = new Table(script);
+        var rng = new Random();
         void Unary(string name, Func<double, double> operation) => math.Set(name,
             DynValue.NewCallback((_, a) => a.Count == 1 ? DynValue.NewNumber(operation(Number(a[0])))
                 : throw new ScriptRuntimeException("This math function requires exactly one argument.")));
@@ -49,6 +53,28 @@ public sealed class LuaComputer
         Binary("atan2", Math.Atan2); Binary("min", Math.Min); Binary("max", Math.Max);
         Binary("pow", Math.Pow); Binary("fmod", (x, y) => x % y);
         math.Set("pi", DynValue.NewNumber(Math.PI));
+        math.Set("random", DynValue.NewCallback((_, a) =>
+        {
+            if (a.Count == 0) return DynValue.NewNumber(rng.NextDouble());
+            if (a.Count == 1)
+            {
+                double n = Number(a[0]);
+                if (n != Math.Truncate(n) || n < 1 || n > int.MaxValue - 1)
+                    throw new ScriptRuntimeException("math.random(n) requires an integer n in 1..2147483646.");
+                return DynValue.NewNumber(rng.Next(1, (int)n + 1));
+            }
+            if (a.Count != 2) throw new ScriptRuntimeException("math.random takes 0, 1, or 2 arguments.");
+            double lo = Number(a[0]), hi = Number(a[1]);
+            if (lo != Math.Truncate(lo) || hi != Math.Truncate(hi) || lo > hi || lo < int.MinValue || hi > int.MaxValue - 1)
+                throw new ScriptRuntimeException("math.random(m, n) requires integers m <= n.");
+            return DynValue.NewNumber(rng.Next((int)lo, (int)hi + 1));
+        }));
+        math.Set("randomseed", DynValue.NewCallback((_, a) =>
+        {
+            if (a.Count != 1) throw new ScriptRuntimeException("math.randomseed requires one number.");
+            rng = new Random(unchecked((int)Math.Truncate(Number(a[0]))));
+            return DynValue.Nil;
+        }));
         script.Globals.Set("math", DynValue.NewTable(math));
         script.Globals.Set("type", DynValue.NewCallback((_, a) => DynValue.NewString(a[0].Type.ToLuaTypeString())));
         script.Globals.Set("assert", DynValue.NewCallback((_, a) =>
@@ -110,14 +136,16 @@ public sealed class LuaComputer
         try
         {
             pending = new double[outputCount];
+            graph.Begin();
             script.Globals.Set("dt", DynValue.NewNumber(deltaTime));
             script.Globals.Set("tick_id", DynValue.NewNumber(tickId));
             Run(tick);
+            graph.Finish(true);
             return pending;
         }
         catch (InterpreterException ex) { faulted = true; throw Failure(ex); }
         catch { faulted = true; throw; }
-        finally { pending = null; }
+        finally { pending = null; graph.Finish(false); }
     }
 
     private void Run(DynValue function)

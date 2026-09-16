@@ -8,6 +8,8 @@
   <ItemGroup>
     <PackageReference Include="MoonSharp" Version="[2.0.0]" />
     <Compile Include="../src/Scripting/LuaComputer.cs" Link="LuaComputer.cs" />
+    <Compile Include="../src/Scripting/LuaGraph.cs" Link="LuaGraph.cs" />
+    <Compile Include="../src/GraphData.cs" Link="GraphData.cs" />
     <Compile Include="../src/SessionSafety.cs" Link="SessionSafety.cs" />
     <Compile Include="../src/ProgramStore.cs" Link="ProgramStore.cs" />
   </ItemGroup>

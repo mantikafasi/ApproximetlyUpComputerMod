@@ -17,25 +17,26 @@ internal sealed class ComputerMessage
     public double[] Inputs { get; set; } = Array.Empty<double>();
     public double[] Outputs { get; set; } = Array.Empty<double>();
     public string? Error { get; set; }
+    public GraphSnapshot? Graph { get; set; }
 }
 
 // Pure wire/session code: no Unity, Steam initialization, source files or script execution.
 internal sealed class ComputerPacket
 {
     internal const int MaxBytes = 65536;
-    internal const string GameHash = "5DE3E4D8167C9C81986D192B5B6B80BFE98BCD84BA3C9B1B765FC24E33475B26";
+    internal const string GameHash = "EB9482EE4F3F4E8787D4F3F2B0CCC5A7EE24B72D65D78AF4A74E756EF39C4322";
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private static readonly JsonSerializerOptions Json = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        MaxDepth = 4
+        MaxDepth = 8
     };
     private static readonly string[] EnvelopeFields = { "Magic", "Protocol", "Version", "Game", "Prefab", "Policy", "Kind", "Nonce", "Session", "Challenge", "Sequence", "Message" };
-    private static readonly string[] MessageFields = { "Kind", "Id", "Target", "ProgramId", "Source", "Run", "Running", "Inputs", "Outputs", "Error" };
+    private static readonly string[] MessageFields = { "Kind", "Id", "Target", "ProgramId", "Source", "Run", "Running", "Inputs", "Outputs", "Error", "Graph" };
 
     public string Magic { get; set; } = "AU08-LINK";
     public int Protocol { get; set; } = 1;
-    public string Version { get; set; } = "0.4.4";
+    public string Version { get; set; } = "0.5.0";
     public string Game { get; set; } = GameHash;
     public string Prefab { get; set; } = "CB54D87A797DFF3A";
     public string Policy { get; set; } = "all-trusted-edit-run";
@@ -72,7 +73,7 @@ internal sealed class ComputerPacket
     {
         if (bytes.Length is < 2 or > MaxBytes) throw new InvalidDataException("Invalid computer packet size.");
         _ = Utf8.GetCharCount(bytes);
-        using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 4 });
+        using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
         CheckFields(document.RootElement, EnvelopeFields);
         var body = document.RootElement.GetProperty("Message");
         if (body.ValueKind != JsonValueKind.Null) CheckFields(body, MessageFields);
@@ -96,7 +97,7 @@ internal sealed class ComputerPacket
 
     private void Validate(bool fromHost)
     {
-        if (Magic != "AU08-LINK" || Protocol != 1 || Version != "0.4.4" || Game != GameHash ||
+        if (Magic != "AU08-LINK" || Protocol != 1 || Version != "0.5.0" || Game != GameHash ||
             Prefab != "CB54D87A797DFF3A" || Policy != "all-trusted-edit-run")
             throw new InvalidDataException("Incompatible computer protocol, plugin, game, prefab or policy.");
         if (!Hex(Nonce, 32)) throw new InvalidDataException("Invalid computer connection nonce.");
@@ -110,7 +111,7 @@ internal sealed class ComputerPacket
         }
         if (Sequence <= 0 || !Hex(Session, 32) || !Hex(Challenge, 32) || Message is not { } m)
             throw new InvalidDataException("Missing computer session or message.");
-        if (fromHost ? m.Kind is not ("state" or "error") : m.Kind is not ("get" or "save" or "run" or "stop" or "stop-all"))
+        if (fromHost ? m.Kind is not ("state" or "error" or "graph-state" or "graph-error") : m.Kind is not ("get" or "save" or "run" or "stop" or "stop-all" or "graph-get" or "graph-settings" or "graph-clear"))
             throw new InvalidDataException("Invalid computer operation or direction.");
         if (m.Id < 0 || (!fromHost && (m.Id == 0 || Sequence != m.Id)))
             throw new InvalidDataException("Invalid computer request ID.");
@@ -130,10 +131,17 @@ internal sealed class ComputerPacket
                 throw new InvalidDataException("Computer source must be UTF-8 Lua text of at most 16384 UTF-16 characters.");
         }
         if (m.Kind == "save" && m.Source is null) throw new InvalidDataException("Save requires source text.");
-        if (m.Error is not null && (m.Kind is not ("error" or "state") || m.Error.Length > 256 || m.Error.Contains('\0')))
+        if (m.Error is not null && (m.Kind is not ("error" or "state" or "graph-error") || m.Error.Length > 256 || m.Error.Contains('\0')))
             throw new InvalidDataException("Invalid computer error text.");
         if (m.Error is not null) _ = Utf8.GetByteCount(m.Error);
-        if (m.Kind == "error" && string.IsNullOrEmpty(m.Error)) throw new InvalidDataException("Error requires a description.");
+        if (m.Kind is "error" or "graph-error" && string.IsNullOrEmpty(m.Error)) throw new InvalidDataException("Error requires a description.");
+        if (m.Kind is "graph-state" or "graph-settings")
+        {
+            if (m.Graph is null) throw new InvalidDataException("Missing graph payload.");
+            m.Graph.Validate();
+        }
+        else if (m.Graph is not null) throw new InvalidDataException("Unexpected graph payload.");
+        if (m.Kind.StartsWith("graph-", StringComparison.Ordinal) && m.Target.Length == 0) throw new InvalidDataException("Graph target is required.");
         if ((m.Run && m.Kind != "save") || (m.Running && m.Kind != "state") ||
             (m.Kind != "state" && (m.Inputs.Length != 0 || m.Outputs.Length != 0)) ||
             (m.Kind == "stop-all" && m.ProgramId is not null))
@@ -221,7 +229,7 @@ internal sealed class ComputerLinkPeer
         LastSequence = packet.Sequence; // Even a rate-limited or failed handler request is never replayed.
         LastSeen = now;
         // Stops must remain available after a burst of save/run requests.
-        if (Client || packet.Message!.Kind is "get" or "stop" or "stop-all") return true;
+        if (Client || packet.Message!.Kind is "get" or "graph-get" or "stop" or "stop-all") return true;
         tokens = Math.Min(4, tokens + Math.Max(0, now - refilled) * 2);
         refilled = now;
         if (tokens < 1) return false;
